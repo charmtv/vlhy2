@@ -1,6 +1,6 @@
 # Sing-Box Hysteria2 & Reality 快速配置脚本
 
-作者：米粒儿  TG群：@https://t.me/mlkjfx6
+作者：米粒儿  TG群：@https://t.me/mlkjfx6  NL论坛：@https:/nodeloc.com
 
 一个用于在 Linux 服务器上快速安装、配置和管理 [Sing-Box](https://github.com/SagerNet/sing-box) 的 Shell 脚本，特别针对 Hysteria2 和 VLESS Reality 协议进行了优化。
 
@@ -71,6 +71,7 @@ sudo bash lvhy.sh
 ================================================
  作者:      米粒儿
  TG群:      https://t.me/mlkjfx6
+ NL论坛:    https:/nodeloc.com
 ================================================
 安装选项:
   1. 安装 Hysteria2 + Reality (共存)
