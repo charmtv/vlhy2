@@ -20,6 +20,9 @@ HYSTERIA_CERT_PEM="${HYSTERIA_CERT_DIR}/cert.pem"
 # 用于持久存储上次配置信息的文件
 PERSISTENT_INFO_FILE="${SINGBOX_CONFIG_DIR}/.last_singbox_script_info"
 
+# 安装次数统计文件
+INSTALL_COUNT_FILE="${SINGBOX_CONFIG_DIR}/.install_count"
+
 # 默认值
 DEFAULT_HYSTERIA_PORT="8443"
 DEFAULT_REALITY_PORT="443"
@@ -44,6 +47,11 @@ LAST_REALITY_FINGERPRINT="chrome"    # 默认值
 LAST_VLESS_LINK=""
 LAST_INSTALL_MODE="" # "all", "hysteria2", "reality", 或 ""
 
+# 安装次数统计
+TODAY_INSTALL_COUNT=0
+TOTAL_INSTALL_COUNT=0
+LAST_INSTALL_DATE=""
+
 # --- 颜色定义 ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -65,9 +73,11 @@ print_author_info() {
     echo -e "${MAGENTA}${BOLD}================================================${NC}"
     echo -e "${CYAN}${BOLD} Sing-Box Hysteria2 & Reality 管理脚本 ${NC}"
     echo -e "${MAGENTA}${BOLD}================================================${NC}"
-    echo -e " ${YELLOW}作者:${NC}      ${GREEN}${AUTHOR_NAME}${NC}"
-    echo -e " ${YELLOW}TG群:${NC}      ${UNDERLINE}${BLUE}${TG_GROUP_URL}${NC}"
-    echo -e " ${YELLOW}NL论坛:${NC}    ${UNDERLINE}${BLUE}${NL_FORUM_URL}${NC}"
+    echo -e " ${YELLOW}作者:${NC}        ${GREEN}${AUTHOR_NAME}${NC}"
+    echo -e " ${YELLOW}TG群:${NC}        ${UNDERLINE}${BLUE}${TG_GROUP_URL}${NC}"
+    echo -e " ${YELLOW}NL论坛:${NC}      ${UNDERLINE}${BLUE}${NL_FORUM_URL}${NC}"
+    echo -e " ${YELLOW}今日安装:${NC}    ${GREEN}${TODAY_INSTALL_COUNT}${NC} 次"
+    echo -e " ${YELLOW}总计安装:${NC}    ${GREEN}${TOTAL_INSTALL_COUNT}${NC} 次"
     echo -e "${MAGENTA}${BOLD}================================================${NC}"
 }
 
@@ -110,6 +120,56 @@ EOF
     else
         error "配置信息保存失败。"
     fi
+}
+
+load_install_count() {
+    if [ -f "$INSTALL_COUNT_FILE" ]; then
+        # 文件格式: TODAY_COUNT|TOTAL_COUNT|LAST_DATE
+        local file_content=$(cat "$INSTALL_COUNT_FILE" 2>/dev/null)
+        if [ -n "$file_content" ]; then
+            TODAY_INSTALL_COUNT=$(echo "$file_content" | cut -d'|' -f1)
+            TOTAL_INSTALL_COUNT=$(echo "$file_content" | cut -d'|' -f2)
+            LAST_INSTALL_DATE=$(echo "$file_content" | cut -d'|' -f3)
+            
+            # 验证数值是否有效
+            if ! [[ "$TODAY_INSTALL_COUNT" =~ ^[0-9]+$ ]]; then
+                TODAY_INSTALL_COUNT=0
+            fi
+            if ! [[ "$TOTAL_INSTALL_COUNT" =~ ^[0-9]+$ ]]; then
+                TOTAL_INSTALL_COUNT=0
+            fi
+            
+            # 检查是否是新的一天，如果是则重置今日计数
+            local current_date=$(date +%Y-%m-%d)
+            if [ "$LAST_INSTALL_DATE" != "$current_date" ]; then
+                TODAY_INSTALL_COUNT=0
+                LAST_INSTALL_DATE="$current_date"
+            fi
+        else
+            TODAY_INSTALL_COUNT=0
+            TOTAL_INSTALL_COUNT=0
+            LAST_INSTALL_DATE=$(date +%Y-%m-%d)
+        fi
+    else
+        TODAY_INSTALL_COUNT=0
+        TOTAL_INSTALL_COUNT=0
+        LAST_INSTALL_DATE=$(date +%Y-%m-%d)
+    fi
+}
+
+save_install_count() {
+    # 确保目录存在
+    mkdir -p "$(dirname "$INSTALL_COUNT_FILE")"
+    # 保存格式: TODAY_COUNT|TOTAL_COUNT|LAST_DATE
+    echo "${TODAY_INSTALL_COUNT}|${TOTAL_INSTALL_COUNT}|${LAST_INSTALL_DATE}" > "$INSTALL_COUNT_FILE" 2>/dev/null
+}
+
+increment_install_count() {
+    load_install_count
+    TODAY_INSTALL_COUNT=$((TODAY_INSTALL_COUNT + 1))
+    TOTAL_INSTALL_COUNT=$((TOTAL_INSTALL_COUNT + 1))
+    LAST_INSTALL_DATE=$(date +%Y-%m-%d)
+    save_install_count
 }
 
 
@@ -631,6 +691,7 @@ install_hysteria2_reality() {
     start_singbox_service || return 1
 
     success "Hysteria2 + Reality 安装配置完成！"
+    increment_install_count # 增加安装次数统计
     display_and_store_config_info "all" # 这也会调用 save_persistent_info
 }
 
@@ -665,6 +726,7 @@ install_hysteria2_only() {
     start_singbox_service || return 1
 
     success "Hysteria2 单独安装配置完成！"
+    increment_install_count # 增加安装次数统计
     display_and_store_config_info "hysteria2"
 }
 
@@ -695,6 +757,7 @@ install_reality_only() {
     start_singbox_service || return 1
 
     success "Reality (VLESS) 单独安装配置完成！"
+    increment_install_count # 增加安装次数统计
     display_and_store_config_info "reality"
 }
 
@@ -911,6 +974,7 @@ check_root
 check_dependencies
 find_and_set_singbox_cmd # 在脚本开始时尝试查找 sing-box
 load_persistent_info     # 在脚本开始时加载持久化信息
+load_install_count       # 加载安装次数统计
 
 # 主循环
 while true; do
