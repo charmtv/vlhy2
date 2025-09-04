@@ -1,8 +1,8 @@
-# Sing-Box Hysteria2 & Reality 快速配置脚本
+# Sing-Box Hysteria2 & Reality 快速配置脚本 (ml.sh)
 
 作者：米粒儿  TG群：@https://t.me/mlkjfx6  NL论坛：@https:/nodeloc.com
 
-一个用于在 Linux 服务器上快速安装、配置和管理 [Sing-Box](https://github.com/SagerNet/sing-box) 的 Shell 脚本，特别针对 Hysteria2 和 VLESS Reality 协议进行了优化。
+一个用于在 Linux 服务器上快速安装、配置和管理 [Sing-Box](https://github.com/SagerNet/sing-box) 的 Shell 脚本，特别针对 Hysteria2 和 VLESS Reality 协议进行了优化。支持安装统计，提供简洁易用的菜单界面。
 
 ## 特性
 
@@ -33,6 +33,7 @@
     *   一键更新 Sing-Box 内核。
     *   一键卸载 Sing-Box 及相关配置。
 *   **信息持久化**：上次成功安装的配置参数会被保存，方便后续通过菜单再次查看。
+*   **安装统计**：自动统计今日安装次数和总计安装次数，在主菜单显示使用情况。
 
 ## 环境要求
 
@@ -46,17 +47,17 @@
 ### 1. 下载并运行脚本
 
 ```bash
-wget -O lvhy.sh https://raw.githubusercontent.com/charmtv/vlhy2/main/lvhy.sh && chmod +x lvhy.sh && ./lvhy.sh
+wget -O ml.sh https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh && chmod +x ml.sh && ./ml.sh
 ```
 或者
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/charmtv/vlhy2/main/lvhy.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh)
 ```
 
 ### 2. 再次运行脚本
 
 ```bash
-sudo bash lvhy.sh
+sudo bash ml.sh
 ```
 
 脚本将以 root 权限运行，并显示主菜单。
@@ -69,9 +70,11 @@ sudo bash lvhy.sh
 ================================================
  Sing-Box Hysteria2 & Reality 管理脚本 
 ================================================
- 作者:      米粒儿
- TG群:      https://t.me/mlkjfx6
- NL论坛:    https:/nodeloc.com
+ 作者:        米粒儿
+ TG群:        https://t.me/mlkjfx6
+ NL论坛:      https:/nodeloc.com
+ 今日安装:    3 次
+ 总计安装:    15 次
 ================================================
 安装选项:
   1. 安装 Hysteria2 + Reality (共存)
@@ -85,7 +88,7 @@ sudo bash lvhy.sh
   7. 查看 Sing-box 服务状态
   8. 查看 Sing-box 实时日志
   9. 查看当前配置文件
-  10. 编辑当前配置文件 (使用 nano)
+  10. 编辑当前配置文件 (nano/vim)
   11. 显示上次保存的导入信息 (含二维码)
 ------------------------------------------------
 其他选项:
@@ -104,10 +107,22 @@ sudo bash lvhy.sh
 *   安装成功后，脚本会显示客户端导入所需的全部信息，包括文本参数和二维码（如果 `qrencode` 已安装）。请妥善保存这些信息。
 *   之后你可以使用选项 `11` 再次查看这些信息。
 
+### 4. 安装统计功能
+
+脚本会自动统计安装使用情况：
+
+*   **今日安装次数**：当天成功执行安装操作（选项 1、2、3）的次数，每天午夜后自动重置
+*   **总计安装次数**：累计成功执行安装操作的总次数，永久保存
+*   **统计显示**：在主菜单顶部实时显示安装统计信息
+*   **数据持久化**：统计数据保存在 `/usr/local/etc/sing-box/.install_count` 文件中
+
+注意：只有完成实际安装操作时才会增加计数，查看配置、管理服务等操作不会影响统计。
+
 ### 注意事项
 
 *   **配置文件**: Sing-Box 的主配置文件位于 `/usr/local/etc/sing-box/config.json`。Hysteria2 使用的自签名证书位于 `/etc/hysteria/`。
 *   **持久化信息**: 上次成功安装的导入参数会保存在 `/usr/local/etc/sing-box/.last_singbox_script_info` 文件中，以便下次运行时通过菜单查看。卸载时如果选择删除配置目录，此文件也会被删除。
+*   **安装统计**: 安装次数统计数据保存在 `/usr/local/etc/sing-box/.install_count` 文件中，卸载时会一并删除。
 *   **SNI (伪装域名)**:
     *   对于 Reality，选择一个响应良好且不易被GFW干扰的SNI（如 `www.microsoft.com`, `www.apple.com` 等）非常重要。脚本会让你自定义。
     *   对于 Hysteria2 的自签名证书，SNI 主要用于客户端验证，默认使用 `bing.com`，你也可以自定义。
