@@ -1,6 +1,6 @@
 # Sing-Box Hysteria2 & Reality 快速配置脚本 (ml.sh)
 
-作者：米粒儿  TG群：@https://t.me/mlkjfx6  NL论坛：@https:/nodeloc.com
+作者：米粒儿  TG群：https://t.me/mlvps66
 
 
 ## 使用方法
@@ -32,8 +32,7 @@ sudo bash ml.sh
  Sing-Box Hysteria2 & Reality 管理脚本 
 ================================================
  作者:        米粒儿
- TG群:        https://t.me/mlkjfx6
- NL论坛:      https:/nodeloc.com
+ TG群:        https://t.me/mlvps66
  今日安装:    3 次
  总计安装:    15 次
 ================================================

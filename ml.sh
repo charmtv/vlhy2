@@ -4,8 +4,7 @@
 
 # --- Author Information ---
 AUTHOR_NAME="米粒儿"
-TG_GROUP_URL="https://t.me/mlkjfx6"
-NL_FORUM_URL="https:/nodeloc.com"
+TG_GROUP_URL="https://t.me/mlvps66"
 
 # --- Configuration ---
 SINGBOX_INSTALL_PATH_EXPECTED="/usr/local/bin/sing-box"
@@ -75,7 +74,6 @@ print_author_info() {
     echo -e "${MAGENTA}${BOLD}================================================${NC}"
     echo -e " ${YELLOW}作者:${NC}        ${GREEN}${AUTHOR_NAME}${NC}"
     echo -e " ${YELLOW}TG群:${NC}        ${UNDERLINE}${BLUE}${TG_GROUP_URL}${NC}"
-    echo -e " ${YELLOW}NL论坛:${NC}      ${UNDERLINE}${BLUE}${NL_FORUM_URL}${NC}"
     echo -e " ${YELLOW}今日安装:${NC}    ${GREEN}${TODAY_INSTALL_COUNT}${NC} 次"
     echo -e " ${YELLOW}总计安装:${NC}    ${GREEN}${TOTAL_INSTALL_COUNT}${NC} 次"
     echo -e "${MAGENTA}${BOLD}================================================${NC}"
