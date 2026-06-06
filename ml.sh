@@ -195,7 +195,9 @@ print_and_save_qr_code() {
     fi
 
     echo "${label} 二维码:"
-    qrencode -t ANSIUTF8 -m 1 -l L "$link" || qrencode -t UTF8 -m 1 -l L "$link" || warn "${label} 终端二维码生成失败。"
+    echo
+    qrencode -t ANSIUTF8 -m 4 -l L "$link" || qrencode -t UTF8 -m 4 -l L "$link" || warn "${label} 终端二维码生成失败。"
+    echo
 
     if qrencode -t PNG -m 4 -s 10 -l L -o "$qr_path" "$link"; then
         chmod 644 "$qr_path" 2>/dev/null || true
@@ -868,8 +870,8 @@ display_and_store_config_info() {
         reality_public_key=$(url_encode "$LAST_REALITY_PUBLIC_KEY")
         reality_short_id=$(url_encode "$LAST_REALITY_SHORT_ID")
         reality_spider_x=$(url_encode "/")
-        reality_remark=$(url_encode "Reality")
-        LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${server_host}:${LAST_REALITY_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${reality_sni}&fp=${reality_fingerprint}&pbk=${reality_public_key}&sid=${reality_short_id}&spx=${reality_spider_x}&type=tcp&headerType=none#${reality_remark}"
+        reality_remark=$(url_encode "R")
+        LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${server_host}:${LAST_REALITY_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${reality_sni}&fp=${reality_fingerprint}&pbk=${reality_public_key}&sid=${reality_short_id}&spx=${reality_spider_x}&type=tcp#${reality_remark}"
         echo -e "${GREEN}${BOLD} Reality (VLESS) 配置信息:${NC}"
         echo -e "服务器地址: ${GREEN}${LAST_SERVER_IP}${NC}"
         echo -e "端口: ${GREEN}${LAST_REALITY_PORT}${NC}"
