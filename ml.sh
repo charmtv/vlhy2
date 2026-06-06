@@ -835,19 +835,22 @@ display_and_store_config_info() {
     if check_and_prepare_qrencode; then # 如果需要，这里会提示安装
         qrencode_is_ready=true
     fi
-    local generated_at server_host
+    local generated_at node_date server_host
     generated_at=$(date +%s)
+    node_date=$(date +%Y%m%d)
     server_host=$(format_uri_host "$LAST_SERVER_IP")
 
     echo -e "----------------------------------------------------"
     if [ "$mode" == "all" ] || [ "$mode" == "hysteria2" ]; then
         # 对于自签名证书, 需要 insecure=1。SNI 应该匹配证书的 CN。
-        local hy2_auth hy2_sni hy2_remark
+        local hy2_auth hy2_sni hy2_node_name hy2_remark
         hy2_auth=$(url_encode "$LAST_HY2_PASSWORD")
         hy2_sni=$(url_encode "$LAST_HY2_MASQUERADE_CN")
-        hy2_remark=$(url_encode "Hy2-${LAST_SERVER_IP}-${generated_at}")
+        hy2_node_name="${node_date}-Hysteria2"
+        hy2_remark=$(url_encode "$hy2_node_name")
         LAST_HY2_LINK="hysteria2://${hy2_auth}@${server_host}:${LAST_HY2_PORT}/?sni=${hy2_sni}&alpn=h3&insecure=1#${hy2_remark}"
         echo -e "${GREEN}${BOLD} Hysteria2 配置信息:${NC}"
+        echo -e "节点名称: ${GREEN}${hy2_node_name}${NC}"
         echo -e "服务器地址: ${GREEN}${LAST_SERVER_IP}${NC}"
         echo -e "端口: ${GREEN}${LAST_HY2_PORT}${NC}"
         echo -e "密码/Auth: ${GREEN}${LAST_HY2_PASSWORD}${NC}"
@@ -864,15 +867,17 @@ display_and_store_config_info() {
     fi
 
     if [ "$mode" == "all" ] || [ "$mode" == "reality" ]; then
-        local reality_sni reality_fingerprint reality_public_key reality_short_id reality_spider_x reality_remark
+        local reality_sni reality_fingerprint reality_public_key reality_short_id reality_spider_x reality_node_name reality_remark
         reality_sni=$(url_encode "$LAST_REALITY_SNI")
         reality_fingerprint=$(url_encode "$LAST_REALITY_FINGERPRINT")
         reality_public_key=$(url_encode "$LAST_REALITY_PUBLIC_KEY")
         reality_short_id=$(url_encode "$LAST_REALITY_SHORT_ID")
         reality_spider_x=$(url_encode "/")
-        reality_remark=$(url_encode "R")
+        reality_node_name="${node_date}-VLESS"
+        reality_remark=$(url_encode "$reality_node_name")
         LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${server_host}:${LAST_REALITY_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${reality_sni}&fp=${reality_fingerprint}&pbk=${reality_public_key}&sid=${reality_short_id}&spx=${reality_spider_x}&type=tcp#${reality_remark}"
         echo -e "${GREEN}${BOLD} Reality (VLESS) 配置信息:${NC}"
+        echo -e "节点名称: ${GREEN}${reality_node_name}${NC}"
         echo -e "服务器地址: ${GREEN}${LAST_SERVER_IP}${NC}"
         echo -e "端口: ${GREEN}${LAST_REALITY_PORT}${NC}"
         echo -e "UUID: ${GREEN}${LAST_REALITY_UUID}${NC}"
