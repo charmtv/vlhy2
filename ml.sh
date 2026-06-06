@@ -11,6 +11,7 @@ SINGBOX_INSTALL_PATH_EXPECTED="/usr/local/bin/sing-box"
 SINGBOX_CONFIG_DIR="/usr/local/etc/sing-box"
 SINGBOX_CONFIG_FILE="${SINGBOX_CONFIG_DIR}/config.json"
 SINGBOX_SERVICE_FILE="/etc/systemd/system/sing-box.service"
+SINGBOX_INSTALL_SCRIPT_URL="https://sing-box.vercel.app/"
 
 HYSTERIA_CERT_DIR="/etc/hysteria" # 针对自签名证书
 HYSTERIA_CERT_KEY="${HYSTERIA_CERT_DIR}/private.key"
@@ -68,6 +69,129 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 
+is_allowed_persistent_key() {
+    case "$1" in
+    LAST_SERVER_IP | LAST_HY2_PORT | LAST_HY2_PASSWORD | LAST_HY2_MASQUERADE_CN | LAST_HY2_LINK | LAST_REALITY_PORT | LAST_REALITY_UUID | LAST_REALITY_PUBLIC_KEY | LAST_REALITY_SNI | LAST_REALITY_SHORT_ID | LAST_REALITY_FINGERPRINT | LAST_VLESS_LINK | LAST_INSTALL_MODE)
+        return 0
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+strip_wrapping_quotes() {
+    local value="$1"
+    local value_len=${#value}
+
+    if [ "$value_len" -ge 2 ] && [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value:1:value_len-2}"
+    fi
+
+    printf '%s' "$value"
+}
+
+load_key_value_file() {
+    local file_path="$1"
+    local line key value
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+
+        if [ -z "$line" ] || [[ "$line" == \#* ]]; then
+            continue
+        fi
+
+        key="${line%%=*}"
+        value="${line#*=}"
+
+        if [ "$key" = "$line" ]; then
+            warn "忽略无效持久化记录: $line"
+            continue
+        fi
+
+        if ! is_allowed_persistent_key "$key"; then
+            warn "忽略未知持久化字段: $key"
+            continue
+        fi
+
+        value=$(strip_wrapping_quotes "$value")
+        printf -v "$key" '%s' "$value"
+    done <"$file_path"
+}
+
+json_escape() {
+    local value="$1"
+
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+
+    printf '%s' "$value"
+}
+
+validate_port() {
+    local port="$1"
+
+    [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+validate_domain() {
+    local domain="$1"
+
+    [ "${#domain}" -le 253 ] && [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$ ]]
+}
+
+safe_remove_file() {
+    local target_path="$1"
+    local expected_path="$2"
+    local label="$3"
+
+    if [ -z "$target_path" ] || [ "$target_path" != "$expected_path" ] || [ "$target_path" = "/" ]; then
+        error "拒绝删除异常${label}路径: ${target_path:-<empty>}"
+        return 1
+    fi
+
+    rm -f -- "$target_path"
+}
+
+safe_remove_dir() {
+    local target_path="$1"
+    local expected_path="$2"
+    local label="$3"
+
+    if [ -z "$target_path" ] || [ "$target_path" != "$expected_path" ] || [ "$target_path" = "/" ]; then
+        error "拒绝删除异常${label}路径: ${target_path:-<empty>}"
+        return 1
+    fi
+
+    rm -rf -- "$target_path"
+}
+
+run_singbox_installer() {
+    local installer_tmp
+    local install_status
+
+    installer_tmp=$(mktemp "/tmp/sing-box-installer.XXXXXX") || {
+        error "创建临时安装脚本失败。"
+        return 1
+    }
+
+    if ! curl -fsSL --connect-timeout 10 --max-time 120 "$SINGBOX_INSTALL_SCRIPT_URL" -o "$installer_tmp"; then
+        rm -f -- "$installer_tmp"
+        return 1
+    fi
+
+    chmod 700 "$installer_tmp"
+    bash "$installer_tmp" install --beta
+    install_status=$?
+    rm -f -- "$installer_tmp"
+
+    return "$install_status"
+}
+
 print_author_info() {
     echo -e "${MAGENTA}${BOLD}================================================${NC}"
     echo -e "${CYAN}${BOLD} Sing-Box Hysteria2 & Reality 管理脚本 ${NC}"
@@ -82,10 +206,8 @@ print_author_info() {
 load_persistent_info() {
     if [ -f "$PERSISTENT_INFO_FILE" ]; then
         info "加载上次保存的配置信息从: $PERSISTENT_INFO_FILE"
-        # Source 文件以加载变量。
-        # 确保文件只包含安全格式的变量赋值。
-        # 例如: LAST_SERVER_IP="1.2.3.4"
-        source "$PERSISTENT_INFO_FILE"
+        # 只按白名单解析 key=value，避免执行持久化文件内容。
+        load_key_value_file "$PERSISTENT_INFO_FILE"
         success "配置信息加载完成。"
     else
         info "未找到持久化的配置信息文件。"
@@ -94,6 +216,7 @@ load_persistent_info() {
 
 save_persistent_info() {
     info "正在保存当前配置信息到: $PERSISTENT_INFO_FILE"
+    local save_status
     # 如果目录不存在则创建 (例如，卸载配置目录后首次运行)
     mkdir -p "$(dirname "$PERSISTENT_INFO_FILE")"
     # 将变量赋值写入文件，覆盖原有文件。
@@ -113,7 +236,9 @@ LAST_REALITY_FINGERPRINT="${LAST_REALITY_FINGERPRINT}"
 LAST_VLESS_LINK="${LAST_VLESS_LINK}"
 LAST_INSTALL_MODE="${LAST_INSTALL_MODE}"
 EOF
-    if [ $? -eq 0 ]; then
+    save_status=$?
+    chmod 600 "$PERSISTENT_INFO_FILE" 2>/dev/null || save_status=1
+    if [ "$save_status" -eq 0 ]; then
         success "配置信息保存成功。"
     else
         error "配置信息保存失败。"
@@ -218,7 +343,7 @@ attempt_install_package() {
 
 check_dependencies() {
     info "检查核心依赖..."
-    local core_deps=("curl" "openssl" "jq") # jq 用于解析 JSON (如果需要)
+    local core_deps=("curl" "openssl")
     local all_deps_met=true
     for dep in "${core_deps[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
@@ -304,7 +429,7 @@ install_singbox_core() {
         find_and_set_singbox_cmd # 确保如果找到，SINGBOX_CMD 被设置
         if [ -n "$SINGBOX_CMD" ]; then
             # 尝试获取版本号，某些旧版sing-box可能没有 'version' 的标准输出格式
-            current_version=$($SINGBOX_CMD version | awk '{print $3}' 2>/dev/null)
+            current_version=$("$SINGBOX_CMD" version | awk '{print $3}' 2>/dev/null)
             if [ -n "$current_version" ]; then
                 info "当前版本: $current_version"
             else
@@ -320,7 +445,7 @@ install_singbox_core() {
     fi
     info "正在安装/更新 Sing-box (beta)..."
     # 确保官方脚本可执行
-    if bash -c "$(curl -fsSL https://sing-box.vercel.app/)" @ install --beta; then
+    if run_singbox_installer; then
         success "Sing-box 安装/更新成功。"
         find_and_set_singbox_cmd # 安装后重新查找命令
         if [ -z "$SINGBOX_CMD" ]; then
@@ -353,6 +478,11 @@ generate_self_signed_cert() {
     fi
 
     info "正在为 Hysteria2 生成自签名证书 (CN=${domain_cn})..."
+    if ! validate_domain "$domain_cn"; then
+        error "证书 CN 无效: $domain_cn"
+        return 1
+    fi
+
     mkdir -p "$HYSTERIA_CERT_DIR"
     openssl ecparam -genkey -name prime256v1 -out "$HYSTERIA_CERT_KEY"
     openssl req -new -x509 -days 36500 -key "$HYSTERIA_CERT_KEY" -out "$HYSTERIA_CERT_PEM" -subj "/CN=${domain_cn}"
@@ -378,7 +508,7 @@ generate_reality_credentials() {
     info "使用命令 '$SINGBOX_CMD' 生成 Reality UUID 和 Keypair..."
     
     info "执行: $SINGBOX_CMD generate uuid"
-    REALITY_UUID_VAL=$($SINGBOX_CMD generate uuid)
+    REALITY_UUID_VAL=$("$SINGBOX_CMD" generate uuid)
     CMD_EXIT_CODE=$?
     if [ $CMD_EXIT_CODE -ne 0 ] || [ -z "$REALITY_UUID_VAL" ]; then
         error "执行 '$SINGBOX_CMD generate uuid' 失败 (退出码: $CMD_EXIT_CODE) 或输出为空。"
@@ -389,7 +519,7 @@ generate_reality_credentials() {
     LAST_REALITY_UUID="$REALITY_UUID_VAL"
 
     info "执行: $SINGBOX_CMD generate reality-keypair"
-    KEY_PAIR_OUTPUT=$($SINGBOX_CMD generate reality-keypair)
+    KEY_PAIR_OUTPUT=$("$SINGBOX_CMD" generate reality-keypair)
     CMD_EXIT_CODE=$?
     if [ $CMD_EXIT_CODE -ne 0 ] || [ -z "$KEY_PAIR_OUTPUT" ]; then
         error "执行 '$SINGBOX_CMD generate reality-keypair' 失败 (退出码: $CMD_EXIT_CODE) 或输出为空。"
@@ -439,6 +569,38 @@ create_config_json() {
     info "正在创建配置文件: ${SINGBOX_CONFIG_FILE}"
     mkdir -p "$SINGBOX_CONFIG_DIR" # 确保配置目录存在
 
+    local hy2_password_json hy2_masquerade_cn_json
+    local reality_uuid_json reality_private_key_json reality_sni_json reality_short_id_json
+
+    if [ "$mode" == "all" ] || [ "$mode" == "hysteria2" ]; then
+        if ! validate_port "$hy2_port"; then
+            error "Hysteria2 端口无效: $hy2_port"
+            return 1
+        fi
+        if ! validate_domain "$hy2_masquerade_cn"; then
+            error "Hysteria2 伪装域名/证书 CN 无效: $hy2_masquerade_cn"
+            return 1
+        fi
+    fi
+
+    if [ "$mode" == "all" ] || [ "$mode" == "reality" ]; then
+        if ! validate_port "$reality_port"; then
+            error "Reality 端口无效: $reality_port"
+            return 1
+        fi
+        if ! validate_domain "$reality_sni"; then
+            error "Reality SNI 无效: $reality_sni"
+            return 1
+        fi
+    fi
+
+    hy2_password_json=$(json_escape "$hy2_password")
+    hy2_masquerade_cn_json=$(json_escape "$hy2_masquerade_cn")
+    reality_uuid_json=$(json_escape "$reality_uuid")
+    reality_private_key_json=$(json_escape "$reality_private_key")
+    reality_sni_json=$(json_escape "$reality_sni")
+    reality_short_id_json=$(json_escape "$LAST_REALITY_SHORT_ID")
+
     local inbounds_json_array=()
     if [ "$mode" == "all" ] || [ "$mode" == "hysteria2" ]; then
         # 注意: Hysteria2 入站中的 masquerade 对于自签名证书不是严格必需的
@@ -452,7 +614,7 @@ create_config_json() {
             "listen_port": ${hy2_port},
             "users": [
                 {
-                    "password": "${hy2_password}"
+                    "password": "${hy2_password_json}"
                 }
             ],
             "masquerade": "https://placeholder.services.mozilla.com", 
@@ -465,7 +627,7 @@ create_config_json() {
                 ],
                 "certificate_path": "${HYSTERIA_CERT_PEM}",
                 "key_path": "${HYSTERIA_CERT_KEY}",
-                "server_name": "${hy2_masquerade_cn}" 
+                "server_name": "${hy2_masquerade_cn_json}"
             }
         }
 EOF
@@ -481,22 +643,22 @@ EOF
             "listen_port": ${reality_port},
             "users": [
                 {
-                    "uuid": "${reality_uuid}",
+                    "uuid": "${reality_uuid_json}",
                     "flow": "xtls-rprx-vision"
                 }
             ],
             "tls": {
                 "enabled": true,
-                "server_name": "${reality_sni}",
+                "server_name": "${reality_sni_json}",
                 "reality": {
                     "enabled": true,
                     "handshake": {
-                        "server": "${reality_sni}",
+                        "server": "${reality_sni_json}",
                         "server_port": 443
                     },
-                    "private_key": "${reality_private_key}",
+                    "private_key": "${reality_private_key_json}",
                     "short_id": [
-                        "${LAST_REALITY_SHORT_ID}" 
+                        "${reality_short_id_json}"
                     ]
                 }
             }
@@ -540,10 +702,10 @@ EOF
 EOF
 
     info "正在校验配置文件..."
-    if $SINGBOX_CMD check -c "$SINGBOX_CONFIG_FILE"; then
+    if "$SINGBOX_CMD" check -c "$SINGBOX_CONFIG_FILE"; then
         success "配置文件语法正确。"
         info "正在格式化配置文件..."
-        if $SINGBOX_CMD format -c "$SINGBOX_CONFIG_FILE" -w; then
+        if "$SINGBOX_CMD" format -c "$SINGBOX_CONFIG_FILE" -w; then
             success "配置文件格式化成功。"
         else
             warn "配置文件格式化失败，但语法可能仍正确。"
@@ -666,13 +828,29 @@ install_hysteria2_reality() {
 
     read -p "请输入 Hysteria2 监听端口 (默认: ${DEFAULT_HYSTERIA_PORT}): " temp_hy2_port
     LAST_HY2_PORT=${temp_hy2_port:-$DEFAULT_HYSTERIA_PORT}
+    if ! validate_port "$LAST_HY2_PORT"; then
+        error "Hysteria2 端口无效: $LAST_HY2_PORT"
+        return 1
+    fi
     read -p "请输入 Hysteria2 伪装域名/证书CN (默认: ${DEFAULT_HYSTERIA_MASQUERADE_CN}): " temp_hy2_masquerade_cn
     LAST_HY2_MASQUERADE_CN=${temp_hy2_masquerade_cn:-$DEFAULT_HYSTERIA_MASQUERADE_CN}
+    if ! validate_domain "$LAST_HY2_MASQUERADE_CN"; then
+        error "Hysteria2 伪装域名/证书 CN 无效: $LAST_HY2_MASQUERADE_CN"
+        return 1
+    fi
 
     read -p "请输入 Reality (VLESS) 监听端口 (默认: ${DEFAULT_REALITY_PORT}): " temp_reality_port
     LAST_REALITY_PORT=${temp_reality_port:-$DEFAULT_REALITY_PORT}
+    if ! validate_port "$LAST_REALITY_PORT"; then
+        error "Reality 端口无效: $LAST_REALITY_PORT"
+        return 1
+    fi
     read -p "请输入 Reality 目标SNI/握手服务器 (默认: ${DEFAULT_REALITY_SNI}): " temp_reality_sni
     LAST_REALITY_SNI=${temp_reality_sni:-$DEFAULT_REALITY_SNI}
+    if ! validate_domain "$LAST_REALITY_SNI"; then
+        error "Reality SNI 无效: $LAST_REALITY_SNI"
+        return 1
+    fi
 
     LAST_HY2_PASSWORD=$(generate_random_password)
     info "生成的 Hysteria2 密码: ${LAST_HY2_PASSWORD}"
@@ -700,8 +878,16 @@ install_hysteria2_only() {
 
     read -p "请输入 Hysteria2 监听端口 (默认: ${DEFAULT_HYSTERIA_PORT}): " temp_hy2_port
     LAST_HY2_PORT=${temp_hy2_port:-$DEFAULT_HYSTERIA_PORT}
+    if ! validate_port "$LAST_HY2_PORT"; then
+        error "Hysteria2 端口无效: $LAST_HY2_PORT"
+        return 1
+    fi
     read -p "请输入 Hysteria2 伪装域名/证书CN (默认: ${DEFAULT_HYSTERIA_MASQUERADE_CN}): " temp_hy2_masquerade_cn
     LAST_HY2_MASQUERADE_CN=${temp_hy2_masquerade_cn:-$DEFAULT_HYSTERIA_MASQUERADE_CN}
+    if ! validate_domain "$LAST_HY2_MASQUERADE_CN"; then
+        error "Hysteria2 伪装域名/证书 CN 无效: $LAST_HY2_MASQUERADE_CN"
+        return 1
+    fi
 
     LAST_HY2_PASSWORD=$(generate_random_password)
     info "生成的 Hysteria2 密码: ${LAST_HY2_PASSWORD}"
@@ -735,8 +921,16 @@ install_reality_only() {
 
     read -p "请输入 Reality (VLESS) 监听端口 (默认: ${DEFAULT_REALITY_PORT}): " temp_reality_port
     LAST_REALITY_PORT=${temp_reality_port:-$DEFAULT_REALITY_PORT}
+    if ! validate_port "$LAST_REALITY_PORT"; then
+        error "Reality 端口无效: $LAST_REALITY_PORT"
+        return 1
+    fi
     read -p "请输入 Reality 目标SNI/握手服务器 (默认: ${DEFAULT_REALITY_SNI}): " temp_reality_sni
     LAST_REALITY_SNI=${temp_reality_sni:-$DEFAULT_REALITY_SNI}
+    if ! validate_domain "$LAST_REALITY_SNI"; then
+        error "Reality SNI 无效: $LAST_REALITY_SNI"
+        return 1
+    fi
 
     generate_reality_credentials || return 1
     
@@ -786,7 +980,7 @@ uninstall_singbox() {
 
     if [ -f "$SINGBOX_SERVICE_FILE" ]; then
         info "正在删除 systemd 服务文件: ${SINGBOX_SERVICE_FILE}"
-        rm -f "$SINGBOX_SERVICE_FILE"
+        safe_remove_file "$SINGBOX_SERVICE_FILE" "$SINGBOX_SERVICE_FILE" "systemd 服务文件" || return 1
         systemctl daemon-reload
     fi
 
@@ -804,7 +998,7 @@ uninstall_singbox() {
         if [ -n "$singbox_exe_to_remove" ] && [ "$singbox_exe_to_remove" != "$official_install_path" ]; then
             # 如果通过其他方式找到了，并且与官方路径不同，也删除官方路径的
             info "正在删除 sing-box 执行文件: $official_install_path (官方脚本位置)"
-            rm -f "$official_install_path"
+            safe_remove_file "$official_install_path" "$SINGBOX_INSTALL_PATH_EXPECTED" "sing-box 执行文件" || return 1
         elif [ -z "$singbox_exe_to_remove" ]; then # 如果之前未找到
              singbox_exe_to_remove="$official_install_path"
         fi
@@ -813,7 +1007,7 @@ uninstall_singbox() {
 
     if [ -n "$singbox_exe_to_remove" ] && [ -f "$singbox_exe_to_remove" ]; then
         info "正在删除 sing-box 执行文件: $singbox_exe_to_remove"
-        rm -f "$singbox_exe_to_remove"
+        safe_remove_file "$singbox_exe_to_remove" "$SINGBOX_INSTALL_PATH_EXPECTED" "sing-box 执行文件" || return 1
     else
         warn "未找到明确的 sing-box 执行文件进行删除 (已检查 ${SINGBOX_INSTALL_PATH_EXPECTED} 和 ${official_install_path})。"
     fi
@@ -823,7 +1017,7 @@ uninstall_singbox() {
     if [[ "$delete_config_dir_confirm" =~ ^[Yy]$ ]]; then
         if [ -d "$SINGBOX_CONFIG_DIR" ]; then
             info "正在删除配置目录 (包括 ${PERSISTENT_INFO_FILE})..."
-            rm -rf "$SINGBOX_CONFIG_DIR"
+            safe_remove_dir "$SINGBOX_CONFIG_DIR" "$SINGBOX_CONFIG_DIR" "配置目录" || return 1
         fi
     else
         info "配置文件目录 (${SINGBOX_CONFIG_DIR}) 已保留。"
@@ -834,7 +1028,7 @@ uninstall_singbox() {
      if [[ "$delete_cert_dir_confirm" =~ ^[Yy]$ ]]; then
         if [ -d "$HYSTERIA_CERT_DIR" ]; then
             info "正在删除 Hysteria2 证书目录..."
-            rm -rf "$HYSTERIA_CERT_DIR"
+            safe_remove_dir "$HYSTERIA_CERT_DIR" "$HYSTERIA_CERT_DIR" "Hysteria2 证书目录" || return 1
         fi
     else
         info "Hysteria2 证书目录 (${HYSTERIA_CERT_DIR}) 已保留。"
@@ -871,7 +1065,7 @@ manage_singbox() {
         restart)
             if [ -f "$SINGBOX_CONFIG_FILE" ]; then
                 info "重启前检查配置文件..."
-                if ! $SINGBOX_CMD check -c "$SINGBOX_CONFIG_FILE"; then
+                if ! "$SINGBOX_CMD" check -c "$SINGBOX_CONFIG_FILE"; then
                     error "配置文件检查失败，无法重启。请先修复配置文件。"
                     return 1
                 fi
