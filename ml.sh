@@ -144,6 +144,68 @@ validate_domain() {
     [ "${#domain}" -le 253 ] && [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$ ]]
 }
 
+url_encode() {
+    local value="$1"
+    local old_lc_all_set="${LC_ALL+x}"
+    local old_lc_all="${LC_ALL-}"
+    local encoded="" char hex i
+
+    LC_ALL=C
+    for ((i = 0; i < ${#value}; i++)); do
+        char="${value:i:1}"
+        case "$char" in
+        [a-zA-Z0-9.~_-])
+            encoded+="$char"
+            ;;
+        *)
+            printf -v hex '%%%02X' "'$char"
+            encoded+="$hex"
+            ;;
+        esac
+    done
+
+    if [ -n "$old_lc_all_set" ]; then
+        LC_ALL="$old_lc_all"
+    else
+        unset LC_ALL
+    fi
+
+    printf '%s' "$encoded"
+}
+
+format_uri_host() {
+    local host="$1"
+
+    if [[ "$host" == *:* && "$host" != \[*\] ]]; then
+        printf '[%s]' "$host"
+    else
+        printf '%s' "$host"
+    fi
+}
+
+print_and_save_qr_code() {
+    local label="$1"
+    local link="$2"
+    local file_name="$3"
+    local qr_path="${SINGBOX_CONFIG_DIR}/${file_name}"
+
+    if ! mkdir -p "$SINGBOX_CONFIG_DIR"; then
+        warn "二维码目录创建失败: $SINGBOX_CONFIG_DIR"
+        return 1
+    fi
+
+    echo "${label} 二维码:"
+    qrencode -t UTF8 -m 2 -l L "$link" || warn "${label} 终端二维码生成失败。"
+
+    if qrencode -t PNG -m 2 -s 8 -l L -o "$qr_path" "$link"; then
+        chmod 644 "$qr_path" 2>/dev/null || true
+        success "${label} 二维码图片已保存: $qr_path"
+    else
+        warn "${label} PNG 二维码生成失败。"
+        return 1
+    fi
+}
+
 safe_remove_file() {
     local target_path="$1"
     local expected_path="$2"
@@ -771,11 +833,18 @@ display_and_store_config_info() {
     if check_and_prepare_qrencode; then # 如果需要，这里会提示安装
         qrencode_is_ready=true
     fi
+    local generated_at server_host
+    generated_at=$(date +%s)
+    server_host=$(format_uri_host "$LAST_SERVER_IP")
 
     echo -e "----------------------------------------------------"
     if [ "$mode" == "all" ] || [ "$mode" == "hysteria2" ]; then
         # 对于自签名证书, 需要 insecure=1。SNI 应该匹配证书的 CN。
-        LAST_HY2_LINK="hy2://${LAST_HY2_PASSWORD}@${LAST_SERVER_IP}:${LAST_HY2_PORT}?sni=${LAST_HY2_MASQUERADE_CN}&alpn=h3&insecure=1#Hy2-${LAST_SERVER_IP}-$(date +%s)"
+        local hy2_auth hy2_sni hy2_remark
+        hy2_auth=$(url_encode "$LAST_HY2_PASSWORD")
+        hy2_sni=$(url_encode "$LAST_HY2_MASQUERADE_CN")
+        hy2_remark=$(url_encode "Hy2-${LAST_SERVER_IP}-${generated_at}")
+        LAST_HY2_LINK="hysteria2://${hy2_auth}@${server_host}:${LAST_HY2_PORT}/?sni=${hy2_sni}&alpn=h3&insecure=1#${hy2_remark}"
         echo -e "${GREEN}${BOLD} Hysteria2 配置信息:${NC}"
         echo -e "服务器地址: ${GREEN}${LAST_SERVER_IP}${NC}"
         echo -e "端口: ${GREEN}${LAST_HY2_PORT}${NC}"
@@ -787,14 +856,19 @@ display_and_store_config_info() {
         
         # 检查 qrencode_is_ready 标志和 qrencode 命令是否存在
         if $qrencode_is_ready && command -v qrencode &>/dev/null; then
-            echo "Hysteria2 二维码:"
-            qrencode -t ANSIUTF8 "${LAST_HY2_LINK}"
+            print_and_save_qr_code "Hysteria2" "$LAST_HY2_LINK" "hysteria2-${generated_at}.png"
         fi
         echo -e "----------------------------------------------------"
     fi
 
     if [ "$mode" == "all" ] || [ "$mode" == "reality" ]; then
-        LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${LAST_SERVER_IP}:${LAST_REALITY_PORT}?security=reality&sni=${LAST_REALITY_SNI}&fp=${LAST_REALITY_FINGERPRINT}&pbk=${LAST_REALITY_PUBLIC_KEY}&sid=${LAST_REALITY_SHORT_ID}&flow=xtls-rprx-vision&type=tcp#Reality-${LAST_SERVER_IP}-$(date +%s)"
+        local reality_sni reality_fingerprint reality_public_key reality_short_id reality_remark
+        reality_sni=$(url_encode "$LAST_REALITY_SNI")
+        reality_fingerprint=$(url_encode "$LAST_REALITY_FINGERPRINT")
+        reality_public_key=$(url_encode "$LAST_REALITY_PUBLIC_KEY")
+        reality_short_id=$(url_encode "$LAST_REALITY_SHORT_ID")
+        reality_remark=$(url_encode "Reality-${LAST_SERVER_IP}-${generated_at}")
+        LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${server_host}:${LAST_REALITY_PORT}?encryption=none&security=reality&sni=${reality_sni}&fp=${reality_fingerprint}&pbk=${reality_public_key}&sid=${reality_short_id}&flow=xtls-rprx-vision&type=tcp#${reality_remark}"
         echo -e "${GREEN}${BOLD} Reality (VLESS) 配置信息:${NC}"
         echo -e "服务器地址: ${GREEN}${LAST_SERVER_IP}${NC}"
         echo -e "端口: ${GREEN}${LAST_REALITY_PORT}${NC}"
@@ -810,8 +884,7 @@ display_and_store_config_info() {
 
         # 检查 qrencode_is_ready 标志和 qrencode 命令是否存在
         if $qrencode_is_ready && command -v qrencode &>/dev/null; then
-            echo "Reality (VLESS) 二维码:"
-            qrencode -t ANSIUTF8 "${LAST_VLESS_LINK}"
+            print_and_save_qr_code "Reality (VLESS)" "$LAST_VLESS_LINK" "reality-${generated_at}.png"
         fi
         echo -e "----------------------------------------------------"
     fi
