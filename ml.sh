@@ -195,9 +195,9 @@ print_and_save_qr_code() {
     fi
 
     echo "${label} 二维码:"
-    qrencode -t UTF8 -m 2 -l L "$link" || warn "${label} 终端二维码生成失败。"
+    qrencode -t ANSIUTF8 -m 1 -l L "$link" || qrencode -t UTF8 -m 1 -l L "$link" || warn "${label} 终端二维码生成失败。"
 
-    if qrencode -t PNG -m 2 -s 8 -l L -o "$qr_path" "$link"; then
+    if qrencode -t PNG -m 4 -s 10 -l L -o "$qr_path" "$link"; then
         chmod 644 "$qr_path" 2>/dev/null || true
         success "${label} 二维码图片已保存: $qr_path"
     else
@@ -862,13 +862,14 @@ display_and_store_config_info() {
     fi
 
     if [ "$mode" == "all" ] || [ "$mode" == "reality" ]; then
-        local reality_sni reality_fingerprint reality_public_key reality_short_id reality_remark
+        local reality_sni reality_fingerprint reality_public_key reality_short_id reality_spider_x reality_remark
         reality_sni=$(url_encode "$LAST_REALITY_SNI")
         reality_fingerprint=$(url_encode "$LAST_REALITY_FINGERPRINT")
         reality_public_key=$(url_encode "$LAST_REALITY_PUBLIC_KEY")
         reality_short_id=$(url_encode "$LAST_REALITY_SHORT_ID")
-        reality_remark=$(url_encode "Reality-${LAST_SERVER_IP}-${generated_at}")
-        LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${server_host}:${LAST_REALITY_PORT}?encryption=none&security=reality&sni=${reality_sni}&fp=${reality_fingerprint}&pbk=${reality_public_key}&sid=${reality_short_id}&flow=xtls-rprx-vision&type=tcp#${reality_remark}"
+        reality_spider_x=$(url_encode "/")
+        reality_remark=$(url_encode "Reality")
+        LAST_VLESS_LINK="vless://${LAST_REALITY_UUID}@${server_host}:${LAST_REALITY_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${reality_sni}&fp=${reality_fingerprint}&pbk=${reality_public_key}&sid=${reality_short_id}&spx=${reality_spider_x}&type=tcp&headerType=none#${reality_remark}"
         echo -e "${GREEN}${BOLD} Reality (VLESS) 配置信息:${NC}"
         echo -e "服务器地址: ${GREEN}${LAST_SERVER_IP}${NC}"
         echo -e "端口: ${GREEN}${LAST_REALITY_PORT}${NC}"
@@ -879,6 +880,7 @@ display_and_store_config_info() {
         echo -e "Fingerprint: ${GREEN}${LAST_REALITY_FINGERPRINT}${NC}"
         echo -e "PublicKey: ${GREEN}${LAST_REALITY_PUBLIC_KEY}${NC}"
         echo -e "ShortID: ${GREEN}${LAST_REALITY_SHORT_ID}${NC}"
+        echo -e "SpiderX: ${GREEN}/${NC}"
         echo -e "Flow: ${GREEN}xtls-rprx-vision${NC}"
         echo -e "${CYAN}VLESS Reality 导入链接:${NC} ${GREEN}${LAST_VLESS_LINK}${NC}"
 
