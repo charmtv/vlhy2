@@ -1,8 +1,5 @@
 # Sing-Box Hysteria2 & Reality 快速配置脚本 (ml.sh)
 
-作者：米粒儿  TG群：https://t.me/mlvps66
-
-
 ## 使用方法
 
 ### 1. 下载并运行脚本
@@ -12,7 +9,7 @@ wget -O ml.sh https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh && chmo
 ```
 或者
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh)
 ```
 
 ### 2. 再次运行脚本
@@ -31,8 +28,6 @@ sudo bash ml.sh
 ================================================
  Sing-Box Hysteria2 & Reality 管理脚本 
 ================================================
- 作者:        米粒儿
- TG群:        https://t.me/mlvps66
  今日安装:    3 次
  总计安装:    15 次
 ================================================
