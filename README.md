@@ -1,21 +1,21 @@
-# Sing-Box Hysteria2 & Reality 快速配置脚本 (ml.sh)
+# Sing-Box Hysteria2 & Reality 快速配置脚本
 
 ## 使用方法
 
 ### 1. 下载并运行脚本
 
 ```bash
-wget -O ml.sh https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh && chmod +x ml.sh && ./ml.sh
+wget -O sing-box.sh https://raw.githubusercontent.com/charmtv/vlhy2/main/sing-box.sh && chmod +x sing-box.sh && sudo ./sing-box.sh
 ```
 或者
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/charmtv/vlhy2/main/ml.sh)
+curl -fsSL https://raw.githubusercontent.com/charmtv/vlhy2/main/sing-box.sh | sudo bash
 ```
 
 ### 2. 再次运行脚本
 
 ```bash
-sudo bash ml.sh
+sudo bash sing-box.sh
 ```
 
 脚本将以 root 权限运行，并显示主菜单。
